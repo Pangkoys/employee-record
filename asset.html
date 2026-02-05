@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Employee Laptop Tracker</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      padding: 20px;
+    }
+    h1, h2 { margin-bottom: 10px; }
+    .stats { margin: 10px 0 20px; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; background: #fff; margin-bottom: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; }
+    th { background: #2c3e50; color: #fff; }
+    input { width: 100%; padding: 5px; box-sizing: border-box; }
+    .available { color: green; font-weight: bold; }
+    .inactive { background: #fceaea; }
+    .error { border: 2px solid red; }
+    button { padding: 6px 12px; margin-right: 6px; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+<h1>Employee Laptop Assignment Tracker</h1>
+
+<!-- Search Bar -->
+<input type="text" id="searchBox" placeholder="Search by employee name or asset number" style="width:100%; padding:8px; margin:10px 0;" oninput="filterTable()">
+
+<div class="stats">
+  Number of Employees: <span id="employeeCount">0</span> |
+  Total Laptops: <span id="totalCount">0</span> |
+  Assigned Mouse: <span id="mouseCount">0</span> |
+  Assigned Headsets: <span id="headsetCount">0</span> |
+  Available Laptops: <span id="availableCount">0</span>
+</div>
+
+<table id="employeeTable">
+  <thead>
+    <tr>
+      <th>Employee Name</th>
+      <th>Laptop Brand</th>
+      <th>Asset Number</th>
+      <th>Mouse Assigned</th>
+      <th>Headset Assigned</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<button onclick="addRow()">Add Employee</button>
+<button onclick="exportExcel()">Export to Excel</button>
+<button onclick="clearAll()">Clear All</button>
+
+<h2>Available Laptops</h2>
+<ul id="availableLaptops"></ul>
+
+<script>
+let employees = JSON.parse(localStorage.getItem('employees')) || [{ name: '', brand: '', asset: '', mouse: '', headset: '' }];
+
+function render() {
+  const tbody = document.querySelector('#employeeTable tbody');
+  tbody.innerHTML = '';
+
+  employees.forEach((emp, index) => {
+    const row = document.createElement('tr');
+    row.dataset.index = index;
+    const isActive = emp.name.trim() !== '';
+    if (!isActive) row.classList.add('inactive');
+
+    row.innerHTML = `
+      <td><input value="${emp.name}" data-i="${index}" data-f="name"></td>
+      <td><input value="${emp.brand}" data-i="${index}" data-f="brand"></td>
+      <td><input value="${emp.asset}" data-i="${index}" data-f="asset"></td>
+      <td><input value="${emp.mouse}" data-i="${index}" data-f="mouse"></td>
+      <td><input value="${emp.headset}" data-i="${index}" data-f="headset"></td>
+      <td>${isActive ? 'Active' : 'Resigned / AWOL'}</td>
+    `;
+    tbody.appendChild(row);
+  });
+
+  attachInputListeners();
+  save();
+  renderAvailableLaptops();
+  updateStats();
+  highlightDuplicateAssets();
+  filterTable();
+}
+
+function attachInputListeners() {
+  document.querySelectorAll('input[data-i]').forEach(input => {
+    input.oninput = function () {
+      const i = this.dataset.i;
+      const f = this.dataset.f;
+      employees[i][f] = this.value;
+      save();
+      renderAvailableLaptops();
+      updateStats();
+      highlightDuplicateAssets();
+      this.focus();
+    };
+  });
+}
+
+function renderAvailableLaptops() {
+  const list = document.getElementById('availableLaptops');
+  list.innerHTML = '';
+  employees.forEach(emp => {
+    if (emp.name.trim() === '' && emp.asset.trim() !== '') {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="available">${emp.brand} - ${emp.asset}</span>`;
+      list.appendChild(li);
+    }
+  });
+}
+
+function updateStats() {
+  const employeeCount = employees.filter(e => e.name.trim() !== '').length;
+  const total = employees.filter(e => e.asset.trim() !== '').length;
+  const totalMouse = employees.filter(e => e.mouse.trim() !== '').length;
+  const totalHeadset = employees.filter(e => e.headset.trim() !== '').length;
+  const available = employees.filter(e => e.name.trim() === '' && e.asset.trim() !== '').length;
+
+  document.getElementById('employeeCount').textContent = employeeCount;
+  document.getElementById('totalCount').textContent = total;
+  document.getElementById('mouseCount').textContent = totalMouse;
+  document.getElementById('headsetCount').textContent = totalHeadset;
+  document.getElementById('availableCount').textContent = available;
+}
+
+function highlightDuplicateAssets() {
+  const assets = {};
+  employees.forEach(e => {
+    if (e.name.trim() !== '' && e.asset.trim() !== '') {
+      assets[e.asset] = (assets[e.asset] || 0) + 1;
+    }
+  });
+
+  document.querySelectorAll('#employeeTable tbody tr').forEach((row, i) => {
+    const input = row.querySelectorAll('input')[2]; // asset input
+    if (employees[i].name.trim() !== '' && assets[employees[i].asset] > 1) {
+      input.classList.add('error');
+    } else {
+      input.classList.remove('error');
+    }
+  });
+}
+
+function addRow() {
+  employees.push({ name: '', brand: '', asset: '', mouse: '', headset: '' });
+  render();
+}
+
+function save() {
+  localStorage.setItem('employees', JSON.stringify(employees));
+}
+
+function clearAll() {
+  if (confirm('Clear all data?')) {
+    employees = [{ name: '', brand: '', asset: '', mouse: '', headset: '' }];
+    save();
+    render();
+  }
+}
+
+function exportExcel() {
+  let csv = 'Employee Name,Laptop Brand,Asset Number,Mouse Assigned,Headset Assigned,Status\n';
+  employees.forEach(e => {
+    const status = e.name.trim() !== '' ? 'Active' : 'Resigned / AWOL';
+    csv += `"${e.name}","${e.brand}","${e.asset}","${e.mouse}","${e.headset}","${status}"\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'Employee_Laptop_Report.csv';
+  link.click();
+}
+
+function filterTable() {
+  const search = document.getElementById('searchBox').value.toLowerCase();
+  document.querySelectorAll('#employeeTable tbody tr').forEach(row => {
+    const index = row.dataset.index;
+    const emp = employees[index];
+    if (emp.name.toLowerCase().includes(search) || emp.asset.toLowerCase().includes(search)) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
+
+render();
+</script>
+
+</body>
+</html>
